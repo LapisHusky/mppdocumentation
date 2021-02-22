@@ -1,0 +1,203 @@
+All messages are sent in stringified arrays, like [{"m":"hi"}]
+Normal clients will never send more than one message per array, but some bot clients do.
+
+Messages the client sends to the server:
+    hi:
+        - This is the first thing the client sends to the server.
+        - No fields get sent with "hi".
+        - The server responds back with its own "hi" message containing information for the client.
+        Example: {"m":"hi"}
+    
+    devices:
+        - This is sent immediately after hi and I think when devices are added or removed.
+        - "list" is a field always sent with this, I think it's a list of connected midi devices but I don't know, I don't have any and have never seen this array contain anything myself.
+        - As far as I know, the server never uses these messages or responds to it. Maybe it's used for analytics?
+        Example: {"m":"devices","list":[]}
+
+    ch:
+        - This is sent once the client has received "hi" back from the server.
+        - "_id" is a field always sent with this, containing a string of channel name the client is trying to join.
+        - "set" is a field always sent with this, containg an object of settings to give the new channel.
+        - The server responds with a "ch" message giving information about the channel they just joined.
+        Example: {"m":"ch","_id":"this is a new room","set":{"visible":false,"color":"#0066ff"}}
+    
+    chset:
+        - This is sent when the client changes the settings in the channel
+        - "set" is a field always sent with this, containing an object of settings to change.
+        - The server responds by sending "ch" to everyone in the room, updating them with the new settings.
+        Example: {"m":"chset","set":{"no cussing":true,"color2":"#ff9900"}}
+
+    n:
+        - This is sent when the client plays notes.
+        - "t" is a field of when the notes should be played, it's a number of milliseconds since 1970.
+        - "n" is a field of an array of notes that receiving clients should play.
+            - note starts are like this: {"n":"c7","v":1,d:100}
+                - "n" is a field of the note that should starts
+                - "v" is the velocity, this is a float between 0 - 1
+                - "d" is an optional field of the delay, this is added to "t" sent with the note message to get the actual start time.
+                    - if "d" is not present, it is treated like 0 by the clients.
+            - note stops are like this: {"n":"c7","s":1,d:100}
+                - "n" is a field of the note that should starts
+                - "s" is always 1, this is how the client knows it's a note stop.
+                - "d" is an optional field of the delay, this is added to "t" sent with the note message to get the actual start time.
+                    - if "d" is not present, it is treated like 0 by the clients.
+        - The server responds by sending a note message to every client in the room except the sender.
+        Example: {"m":"n","t":1613972082283,"n":[{"n":"c7","v":0.5},{"n":"c7","s":1,"d":50}]}
+
+    a:
+        - This is sent when clients send a chat message.
+        - "message" is a field of a string to send.
+        - The server responds by sending a chat message to every client in the room.
+        Example: {"m":"a","message":"hi I am a human"}
+
+    +ls:
+        - This is sent when the client opens the room list.
+        - No fields are sent with this.
+        - The server responds with an "ls" message containing info for every visible room.
+        Example: {"m":"+ls"}
+
+    -ls:
+        - This is sent when the client closes the room list.
+        - The server will stop updating the client with room changes once this is sent.
+        Example: {"m":"-ls"}
+
+    userset:
+        - This is sent when the client changes their name.
+        - "set" is a field sent with this as an object like {"name":"aeiou"}
+            - Only the name field is sent with this, presumably "color" used to be sent as well when people could change their colors.
+        - The server responds by updating everyone in the room with a "p" message.
+        Example: {"m":"userset","set":{"name":"not a bot"}}
+
+    t:
+        - This is sent every 20 seconds so the client can sync their time with the server to make sure that notes play at the correct time.
+        - "e" is a field sent with this containing the client's current Date.now() when the message was sent.
+        - The server responds by sending "t" back to the client.
+        Example: {"m":"t","e":1613972565299}
+
+    m:
+        - This is sent every 50 milliseconds while the client is moving their mouse.
+        - "x" is a field containing a string or number (browsers usually send strings, bots usually send numbers) of the cursor's x position as a float between 0 - 100.
+        - "y" is a field containing a string or number (browsers usually send strings, bots usually send numbers) of the cursor's y position as a float between 0 - 100.
+        - The server responds by sending "m" to every client in the room except the sender.
+        Example: {"m":"m","x":"50.25","y":"73.85"}
+
+    bye:
+        - Normal clients never send this.
+        - No fields are sent with this.
+        - The server closes the client's socket connection when this is sent.
+        - Be extremely careful that you don't keep handling messages if this is sent in an array with more messages after it. The original site and many clones have issues with sending messages after "bye".
+            - An example of something that can mess up the original site is [{"m":"bye"},{"m":"ch","_id":"lobby"}]
+        Example: {"m":"bye"}
+
+    kickban:
+        - Clients send this when they ban someone.
+        - "_id" is a field sent with this of the _id of the user to ban.
+        - "ms" is a field sent with this of the number of milliseconds to ban that person, between 0 - 3600000
+        - The server responds by banning the user and sending them to test/awkward if they are in that room.
+        Example: {"m":"kickban","_id":"514df042c61528f566530313","ms":60000}
+
+    chown:
+        - Clients send this when you drop the crown or give it to someone else.
+        - "id" is a field containing the id (NOT THE SAME AS _id) of the person to give the crown to.
+            - if "id" is not sent, the client drops the crown.
+        Example: {"m":"chown","id":"0123456789abcdef01234567"}
+
+    unban:
+        - Normal clients never send this, but bots sometimes do.
+        - "_id" is a field containing the _id of the person to unban.
+        Example: {"m":"unban","_id":"514df042c61528f566530313"}
+
+Messages the server sends to clients:
+    hi:
+        - This is sent as a reply when the client sends "hi" to the server.
+        - "u" is an object containing user info about the client.
+        - "t" is the server's current time. The client uses this to sync the time immediately.
+        - Other fields can be sent and are sent on regular MPP, but they are not used.
+        Example: {"m":"hi","t":1613972565299,"u":{"_id":"514df042c61528f566530313","color":"#0066ff","name":"aeiou"},"motd":"idk some random motd usually goes here in regular MPP, but it's never displayed"}
+
+    ch:
+        - This is sent whenever a channel's settings update, or a client switches channels.
+        - "ch" is an object containing the channel's info.
+            - "count" is the number of unique users in the room.
+            - "crown" is an object containing info about the crown in the room. This field does not exist if the room is a lobby.
+                - "participantId" is a string of the id of the crown holder. This field does not exist when the crown is dropped.
+                - "userId" is a string of the _id of the crown holder. This field still exists even if the crown is dropped.
+                - "time" is the time when the crown was last dropped.
+                - "startPos" is an object containing the x and y of the crown's starting location in the drop animation.
+                    - "x" is the start x position, this is the crown holder's mouse x position.
+                    - "y" is the start y position, this is the crown holder's mouse y position.
+                - "endPos" is an object containing the x and y of the crown's ending location in the drop animation.
+                    - "x" is the end x position, this is the crown holder's mouse x position but clamped between 10 and 90.
+                    - "y" is the end y position, this is a random float between 70 and 90.
+            - "settings" is an object containing all of the channel's settings.
+            - "_id" is a string of the room's name.
+        - "ppl" is an object containing a list of participants including id, _id, name, color, x, and y.
+        - "p" is a string containing the client's current id.
+        Example: {"m":"ch","p":"fed489f252c7bbdac918086b","ch":{"count":1,"_id":"miditest","settings":{"visible":false,"chat":true,"color":"#3b5054","color2":"#001014","limit":50},"crown":{"endPos":{"x":50,"y":50},"participantId":"fed489f252c7bbdac918086b","startPos":{"x":50,"y":50},"time":1613961361764,"userId":"514df042c61528f566530313"}},"ppl":[{"color":"#ff8ff9","name":"aeiou","_id":"514df042c61528f566530313","id":"fed489f252c7bbdac918086b","x":200,"y":100}]}
+
+    c:
+        - This is sent whenever the client switches channels.
+        - "c" is an array containing each chat message, organized the same as an "a" message.
+        Example: {"m":"c","c":[{"t":1613972561842,"a":"> Date.now()","p":{"color":"#ff8ff9","_id":"514df042c61528f566530313","name":"aeiou","id":"fed489f252c7bbdac918086b"}},{"t":1613972561908,"a":"▶ number 1613972565299","p":{"color":"#ff8ff9","_id":"514df042c61528f566530313","name":"aeiou","id":"fed489f252c7bbdac918086b"}}]}
+
+    nq:
+        - This is sent whenever someone's note quota is updated.
+        - "allowance" is a number. Idk exactly what it means.
+        - "max" is a number, always double allowance from what I've seen. Idk exactly what it means.
+        - "maxHistLen" is also a number, always 3 from what I've seen. Idk exactly what it means.
+        Example: {"m":"nq","allowance":600,"max":1800,"maxHistLen":3}
+
+    t:
+        - This is sent as a reply to a client's "t" message.
+        - "t" is the server's current time.
+        - "e" is an echo of the time the client sent.
+        Example: {"m":"t","t":1613974152688,"e":1613974149320}
+
+    m:
+        - This is sent when a user in a room moves their mouse.
+        - "x" is the x position.
+        - "y" is the y position.
+        - "id" is the id of the user who moved their mouse.
+        Example: {"m":"m","x":50,"y":77.5,"id":"f12de4b06a1ff9419f20b21c"}
+
+    n:
+        - This is sent when a user in a room plays notes.
+        - It is the same as the message the user sent, except the "p" field is added containing the id of the user who played the notes.
+        Example: {"m":"n","t":1613972082283,"n":[{"n":"c7","v":0.5},{"n":"c7","s":1,"d":50}],"p":"f12de4b06a1ff9419f20b21c"}
+
+    p:
+        - This is sent to people in a room when a new user joins, or a user changes their name.
+        - "id" is a string of the id of the user.
+        - "_id" is a string of the _id of the user.
+        - "color" is a string of the color of the user.
+        - "name" is a string of the name of the user.
+        Example: {"m":"p","id":"f12de4b06a1ff9419f20b21c","_id":"514df042c61528f566530313","name":"aeiou","color":"#0066ff"}
+
+    bye:
+        - This is sent when someone leaves a channel.
+        - "p" is the id of the user who left.
+        Example: {"m":"bye","p":"f12de4b06a1ff9419f20b21c"}
+
+    ls:
+        - This is sent when a user sends +ls, or when a single room updates and the user is still subscribed to the room list.
+        - "c" is a boolean of whether it contains every room, or if it's just updating a single room.
+        - "u" is an array of rooms or an array containing a single room.
+            - Each room here is an object containing the room's settings, crown, count, and _id.
+                - If the user is banned from that room, it also contains "banned":true
+        Example: {"m":"ls","c":false,"u":[{"_id": "✧𝓡𝓟 𝓡𝓸𝓸𝓶✧","settings": {"chat": true,"color": "#1245a9","visible": true,"crownsolo": false,"no cussing": false,"color2": "#000000"},"count": 11,"crown": {"endPos": {"x": 90,"y": 77.7322776894364},"startPos": {"x": 200,"y": 100},"time": 1613842813288,"userId": "b40df99cc2ca6f503fba77cb","participantId": "5d0a093d4e103453356d6ef3"}}]}
+
+    a:
+        - This is sent whenever a client characters.
+        - "m" is a string of the message getting sent.
+        - "t" is the time the server received the chat message.
+        - "p" is the user who chatted, this contains the same fields as a "p" message.
+        Example: {"m":"a","t":1613975032094,"a":"a","p":{"color":"#ff8ff9","_id":"514df042c61528f566530313","name":"aeiou","id":"fed489f252c7bbdac918086b"}}
+
+    notification:
+        - This is sent when a user gets banned from a room, the player tried to join a room they are banned from, or someone else in the room got banned.
+        - "class" is a string of the class the notification should have.
+        - "duration" is a number of milliseconds the notification should appear for.
+        - "target" is the place the notification should appear.
+        - "text" is the body text of the notification.
+        - "title" is the title text of the notification.
+        Example: {"m":"notification","class":"short","duration":7000,"target":"#room","text":"aeiou banned Anowomous from the channel for 0 minutes.","title":"Notice"}
